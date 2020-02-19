@@ -1,36 +1,46 @@
 const curve = require('secp256k1')
 const crypto = require('crypto')
+const assert = require('nanoassert')
 const biguintle = require('biguintle')
 
-module.exports = newKeychain
-
 module.exports = Keychain = function () {
-  this.funding = generateKey()
+  this.funding = generateKeyPair()
+  this.obscuringFactor
 
   this._perCommitment = new PerCommitment()
 
   this._revocationBasepoint = {}
-  this._paymentBasepoint = {} 
-  this._delayedPaymentBasepoint = {} 
+  this._paymentBasepoint = {}
+  this._delayedPaymentBasepoint = {}
   this._htlcBasepoint = {}
 
-  this._revocationBasepoint.local = generateKey()
-  this._paymentBasepoint.local = generateKey() 
-  this._delayedPaymentBasepoint.local = generateKey() 
-  this._htlcBasepoint.local = generateKey()
+  this._revocationBasepoint.local = generateKeyPair()
+  this._paymentBasepoint.local = generateKeyPair()
+  this._delayedPaymentBasepoint.local = generateKeyPair()
+  this._htlcBasepoint.local = generateKeyPair()
+}
+
+Keychain.prototype.signCommitment = function (data) {
+  const ecdsaSig = curve.ecdsaSign(data, this.funding.local.priv)
+  return curve.signatureExport(ecdsaSig)
+}
+
+Keychain.prototype.verifyCommitmentSig = function (signature, data) {
+  const ecdsaSig = curve.signatureImport(signature)
+  return curve.ecdsaVerify(ecdsaSig, data, this.funding.remote)
 }
 
 Keychain.prototype.updateLocal = function () {
-  this._perCommitment.update()
+  return this._perCommitment.update()
 }
 
 Keychain.prototype.addRemoteKeys = function (opts) {
-  keychain.funding.remote = opts.fundingPubkey
+  this.funding.remote = opts.fundingPubkey
 
-  keychain._revocationBasepoint.remote = opts.revocationBasepoint
-  keychain._paymentBasepoint.remote = opts.paymentBasepoint
-  keychain._delayedPaymentBasepoint.remote = opts.delayedPaymentBasepoint
-  keychain._htlcBasepoint.remote = opts.htlcBasepoint
+  this._revocationBasepoint.remote = opts.revocationBasepoint
+  this._paymentBasepoint.remote = opts.paymentBasepoint
+  this._delayedPaymentBasepoint.remote = opts.delayedPaymentBasepoint
+  this._htlcBasepoint.remote = opts.htlcBasepoint
 }
 
 // NOTE: insecure
@@ -47,7 +57,7 @@ Keychain.prototype.getLocalKeys = function () {
 Keychain.prototype.getRemoteKeys = function () {
   const keys = {}
 
-  keys.local = derivePub(this.prevRemoteCommitment, this._paymentBasepoint.remote)
+  keys.remote = derivePub(this.prevRemoteCommitment, this._paymentBasepoint.remote)
   keys.delayedPayment = derivePub(this.prevRemoteCommitment, this._delayedPaymentBasepoint.remote)
   keys.htlc = derivePub(this.prevRemoteCommitment, this._htlcBasepoint.remote)
 
@@ -55,7 +65,7 @@ Keychain.prototype.getRemoteKeys = function () {
 }
 
 Keychain.prototype.getRevocationKey = function () {
-  const remoteCommitment = generateKey(this.prevRemoteCommitment)
+  const remoteCommitment = generateKeyPair(this.prevRemoteCommitment)
 
   return deriveRevocationKey(remoteCommitment, this._revocationBasepoint.local)
 }
@@ -64,18 +74,37 @@ Keychain.prototype.getRemoteRevocationKey = function () {
   return deriveRevocationPub(this._perCommitment, this._revocationBasepoint.remote)
 }
 
+Keychain.prototype.generateObscuringFactor = function (initiator = false) {
+  const arr = []
+
+  if (initiator) {
+    arr.push(this._paymentBasepoint.local.pub)
+    arr.push(this._paymentBasepoint.remote)
+  } else {
+    arr.push(this._paymentBasepoint.remote)
+    arr.push(this._paymentBasepoint.local.pub)
+  }
+
+  this.obscuringFactor = shasum(Buffer.concat(arr))
+  return this.obscuringFactor
+}
+
 var PerCommitment = function () {
   this._seed = crypto.randomBytes(32)
   this.counter = 2 ** 48 - 1
-  this.key
+  this.priv
+  this.pub
 
   this.update()
 }
 
 PerCommitment.prototype.update = function () {
   assert(this.counter > 0, 'maximum amount of per commitment secrets have been derived')
-  this.key = generateKey(generateFromSeed(this._seed, this.counter))
+  this.priv = generateFromSeed(this._seed, this.counter)
+  this.pub = generatePubKey(this.priv)
   this.counter--
+
+  return this.pub
 }
 
 function deriveRevocationPub (commitment, base) {
@@ -84,7 +113,7 @@ function deriveRevocationPub (commitment, base) {
 
   const privKey = curve.add(curve.multiply(base.pub, revocationTweak), curve.multiply(commit.pub, commitmentTweak))
 
-  return generateKey(privKey)
+  return generateKeyPair(privKey)
 }
 
 // helpers
@@ -94,7 +123,7 @@ function deriveRevocationKey (commitment, base) {
 
   const privKey = add(multiply(base.priv, revocationTweak), multiply(commit.priv, commitmentTweak))
 
-  return generateKey(privKey)
+  return generateKeyPair(privKey)
 }
 
 function generateTweak (commitmentPoint, basepoint) {
@@ -111,7 +140,7 @@ function deriveKeys (commitmentPoint, basekey) {
   const tweak = generateTweak(commitmentPoint, basekey.pub)
   const privKey = add(basekey.priv, tweak)
 
-  return generateKey(privKey)
+  return generateKeyPair(privKey)
 }
 
 // buffer arithmetic
@@ -126,11 +155,11 @@ function add (a, b) {
 }
 
 // generate key pairs
-function generateKey (privKey) {
+function generateKeyPair (privKey) {
   const keyPair = {}
 
   keyPair.priv = privKey || newPrivKey()
-  keyPair.pub = curve.publicKeyCreate(keyPair.priv).publicKey(convert)
+  keyPair.pub = generatePubKey(keyPair.priv)
 
   return keyPair
 
@@ -141,6 +170,15 @@ function generateKey (privKey) {
     } while (!curve.privateKeyVerify(key))
     return key
   }
+}
+
+function generatePubKey (privKey) {
+  const pub = curve.publicKeyCreate(privKey)
+  pub.serializeCompressed = function () {
+    return Buffer.from(curve.publicKeyConvert(this))
+  }
+
+  return pub
 }
 
 function extractKey (publicKey) {
@@ -154,8 +192,8 @@ function extractKey (publicKey) {
 
 // specified in BOLT-03
 function generateFromSeed (seed, counter) {
-  let upperCounter = Math.floor(counter / 2 ** 32)
-  let lowerCounter = counter % 2 ** 32
+  const upperCounter = Math.floor(counter / 2 ** 32)
+  const lowerCounter = counter % 2 ** 32
   let mask = 2 ** 15
 
   // do upper counter
@@ -167,8 +205,8 @@ function generateFromSeed (seed, counter) {
   seed.writeUInt16BE(upperSeed, 26)
 
   mask = 2 ** 31
-  const lowerSeed = seed.readUInt32BE(28)
-  for (let i = 0; i < 32; ) {
+  var lowerSeed = seed.readUInt32BE(28)
+  for (let i = 0; i < 32; i++) {
     if (lowerCounter) lowerSeed ^= mask
     mask = mask >> 1
   }
@@ -176,4 +214,8 @@ function generateFromSeed (seed, counter) {
 
   const result = crypto.createHash('sha256').update(seed).digest()
   return result
+}
+
+function shasum (data) {
+  return crypto.createHash('sha256').update(data).digest()
 }

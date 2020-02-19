@@ -24,7 +24,7 @@ function genMultiSigScript (aPub, bPub) {
 
   // sort according to BIP-69
   if (aPub.compare(bPub) === 1) {
-    [ aPub, bPub ] = [ bPub, aPub ]
+    [aPub, bPub] = [bPub, aPub]
   }
 
   builder = new ScriptBuilder()
@@ -63,16 +63,16 @@ ScriptBuilder.prototype.encode = function () {
 
 function commitmentTx (obscure, funding, local, remote, commitmentNumber) {
   const tx = {}
-  
+
   const obscCommitmentNum = obscure.slice(26)
 
   for (let i = 0; i < 6; i++) {
-    const obscCommitmentNum[i] ^= commitmentNumber >> 8 * (5 - i)
+    obscCommitmentNum[i] ^= commitmentNumber >> 8 * (5 - i)
   }
-  
+
   tx.version = 2
   tx.in = []
-  
+
   tx.locktime = Buffer.alloc(4)
   tx.locktime[0] = 0x20
   tx.locktime.set(obscCommitmentNum.slice(3), 1)
@@ -115,14 +115,14 @@ function createCommitmentTxns (obscure, funding, keys, delay, value, commitmentN
   // we sign and send sig to remote
   const ourValue = value
   const ourScripts = {}
-  const ourScripts.local = localScript(keys.localRevocation, keys.localDelay, delay.local)
-  const ourScripts.remote = remoteScript(keys.remotePubKey)
-  
+  ourScripts.local = localScript(keys.localRevocation, keys.localDelay, delay.local)
+  ourScripts.remote = remoteScript(keys.remotePubKey)
+
   // we verify remote sig against this
   const theirValue = { local: value.remote, remote: value.local }
   const theirScripts = {}
-  const theirScripts.local = localScript(keys.remoteRevocation, keys.remoteDelay, delay.remote)
-  const theirScripts.remote = remoteScript(keys.localPubkey)
+  theirScripts.local = localScript(keys.remoteRevocation, keys.remoteDelay, delay.remote)
+  theirScripts.remote = remoteScript(keys.localPubkey)
 
   const ourCommitmentTxn = commitmentTx(obscure, funding, ourScripts, ourValue)
   const theirCommitmentTxn = commitmentTx(obscure, funding, theirScripts, theirValue)

@@ -397,6 +397,67 @@ AcceptChannel.prototype.numBytes = function () {
   return length
 }
 
+module.exports.FundingCreated = FundingCreated = function () {
+  this.type = 34
+
+  this.temporaryChannelId
+  this.fundingTxid
+  this.fundingOutputIndex
+  this.signature
+}
+
+
+FundingCreated.prototype.decode = function (buf, offset) {
+  if (!buf) buf = Buffer.alloc(this.numBytes())
+  if (!offset) offset = 0
+  const startIndex = offset
+
+  buf.writeUInt16BE(this.type, offset)
+  offset += 2
+
+  buf.set(this.temporaryChannelId, offset)
+  offset += 32
+
+  buf.set(this.fundingTxid, offset)
+  offset += 32
+
+  buf.writeUInt16BE(this.fundingOutputIndex, offset)
+  offset += 2
+
+  buf.set(this.signature, offset)
+  offset += 64
+
+  this.decode.bytes = offset - startIndex
+  return this
+}
+
+FundingCreated.prototype.decode = function (buf, offset) {
+  if (!offset) offset = 0
+  const startIndex = offset
+
+  assert(buf.readUInt16BE(offset) === this.type, 'wrong type: funding created messages should be type 34')
+  offset += 2
+
+  this.temporaryChannelId = buf.slice(offset, offset + 32)
+  offset += 32
+
+  this.fundingTxid = buf.slice(offset, offset + 32)
+  offset += 32
+
+  this.fundingOutputIndex = buf.readUInt16BE(offset)
+  offset += 2
+
+  this.signature = buf.slice(offset, offset + 64)
+  offset += 64
+
+  this.decode.bytes = offset - startIndex
+  return this
+}
+
+FundingCreated.prototype.numBytes = function () {
+  return 132
+}
+
 function readPubKey (buf, offset) {
   const publicKey = buf.slice(offset, offset + 33)
   const pub = curve.publicKeyConvert(publicKey, false)

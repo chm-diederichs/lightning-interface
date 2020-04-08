@@ -1,5 +1,6 @@
 const assert = require('nanoassert')
-const script = require('bitcoin-consensus-encoding').script
+const crypto = require('crypto')
+const Script = require('btc-script-builder')
 
 const MAX_SCRIPT_SIZE = 10000
 
@@ -22,46 +23,35 @@ function witnessScriptHash (witnessScript) {
 function genMultiSigScript (aPub, bPub) {
   assert(aPub.length == 33 && bPub.length == 33, 'Pubkey size error: compressed format only')
 
+  builder = new Script()
+
+  builder.addOp('OP_2')
+  builder.addData(aPub)
+  builder.addData(bPub)
+  builder.addOp('OP_2')
+  builder.addOp('OP_CHECKMULTISIG')
+
+  return builder.compile()
+}
+
+function genFundingPkScript (aPub, bPub, amount) {
+  assert(amount >= 0, 'amount should be > 0.')
+
   // sort according to BIP-69
   if (aPub.compare(bPub) === 1) {
     [aPub, bPub] = [bPub, aPub]
   }
 
-  builder = new ScriptBuilder()
-
-  builder.add('OP_2')
-  builder.add(aPub)
-  builder.add(bPub)
-  builder.add('OP_2')
-  builder.add('OP_CHECKMULTISIG')
-
-  return builder.encode()
-}
-
-function genFundingPkScript (aPub, bPub, amount) {
-  assert(amount <= 0, 'amount should be > 0.')
-
   const witnessScript = genMultiSigScript(aPub, bPub)
   const pkScript = witnessScriptHash(witnessScript)
+
+  return {
+    witnessScript,
+    pkScript
+  }
 }
 
-// TODO: take functionality directly from consensus-encoding
-var ScriptBuilder = function () {
-  this.script = ''
-}
-
-ScriptBuilder.prototype.add = function (data) {
-  if (Buffer.isBuffer(data)) data = data.toString('utf8')
-  this.script += data
-  this.script += ' '
-  return this
-}
-
-ScriptBuilder.prototype.encode = function () {
-  return script.encode(this.script)
-}
-
-function commitmentTx (obscure, funding, local, remote, commitmentNumber) {
+function commitmentTx (obscure, funding, script, value, commitmentNumber) {
   const tx = {}
 
   const obscCommitmentNum = obscure.slice(26)
@@ -101,35 +91,38 @@ function commitmentTx (obscure, funding, local, remote, commitmentNumber) {
   }
 
   if (toLocal.value < toRemote.value) {
-    tx.out.push(toLocal)
+    if (toLocal.value) tx.out.push(toLocal)
     tx.out.push(toRemote)
   } else {
-    tx.out.push(toRemote)
+    if (toRemote.value) tx.out.push(toRemote)
     tx.out.push(toLocal)
   }
 
   return tx
 }
 
-function createCommitmentTxns (obscure, funding, keys, delay, value, commitmentNumber) {
+function createCommitmentTxns (obscure, funding, keys, delay, value, commitmentNumber, fee) {
+  // NEED TO FIX: ourScripts are for "their tx" changing around leads to wrong obscure
   // we sign and send sig to remote
   const ourValue = value
   const ourScripts = {}
-  ourScripts.local = localScript(keys.localRevocation, keys.localDelay, delay.local)
-  ourScripts.remote = remoteScript(keys.remotePubKey)
-
+  console.log(keys.local.payment.compress().toString('hex'), 'compress')
+  console.log(keys.local.payment.decompress().toString('hex'), 'decompress')
+  ourScripts.local = localScript(keys.local.revocation.compress(), keys.local.delayedPayment.compress(), delay.local)
+  ourScripts.remote = remoteScript(keys.remote.payment.compress())
+  console.log('-------------------------', ourScripts.remote)
   // we verify remote sig against this
   const theirValue = { local: value.remote, remote: value.local }
   const theirScripts = {}
-  theirScripts.local = localScript(keys.remoteRevocation, keys.remoteDelay, delay.remote)
-  theirScripts.remote = remoteScript(keys.localPubkey)
+  theirScripts.local = localScript(keys.remote.revocation.compress(), keys.remote.delayedPayment.compress(), delay.remote)
+  theirScripts.remote = remoteScript(keys.local.payment.compress())
 
-  const ourCommitmentTxn = commitmentTx(obscure, funding, ourScripts, ourValue)
-  const theirCommitmentTxn = commitmentTx(obscure, funding, theirScripts, theirValue)
+  const ourCommitmentTxn = commitmentTx(obscure, funding, ourScripts, ourValue, commitmentNumber)
+  const theirCommitmentTxn = commitmentTx(obscure, funding, theirScripts, theirValue, commitmentNumber)
 
   return {
-    toSign: ourCommitmentTxn,
-    toVerify: theirCommitmentTxn
+    toSign: theirCommitmentTxn,
+    toVerify: ourCommitmentTxn
   }
 }
 
@@ -143,15 +136,26 @@ function remoteScript (remotePubKey) {
 }
 
 function localScript (revocationPubkey, localDelayPubkey, toSelfDelay) {
-  const lockScript = `OP_IF ${revocationPubkey} OP_ELSE ${toSelfDelay} OP_CHECKSEQUENCEVERIFY OP_DROP ${localDelayPubkey} OP_ENDIF OP_CHECKSIG`
-  const outScript = script.encode(lockScript)
+  const lockScript = new Script()
+    .addOp('IF')
+    .addData(revocationPubkey)
+    .addOp('ELSE')
+    .addData(toSelfDelay)
+    .addOp('CHECKSEQUENCEVERIFY')
+    .addOp('DROP')
+    .addData(localDelayPubkey)
+    .addOp('ENDIF')
+    .addOp('CHECKSIG')
+    .compile()
 
-  const witness = shasum(scriptBuf)
-  const segwitScript = Buffer.alloc(34)
-  segwitScript.writeUInt8(0x20, 1)
-  segwitScript.set(witness, 1)
+  console.log('SCRIPT', lockScript.toString('hex'))
+  const witness = shasum(lockScript)
+  const scriptPubKey = Buffer.alloc(34)
+  scriptPubKey.writeUInt8(0x20, 1)
+  scriptPubKey.set(witness, 2)
+  console.log(scriptPubKey)
 
-  return segwitScript
+  return scriptPubKey
 }
 
 function shasum (item) {

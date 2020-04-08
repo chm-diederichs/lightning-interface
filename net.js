@@ -7,7 +7,7 @@ const funding = require('./funding')
 
 const initiatorStatic = Buffer.from('1111111111111111111111111111111111111111111111112111111111111111', 'hex')
 const initiatorEphemeral = Buffer.from('1212121212121212121212121212121212121212121212121212121212121212', 'hex')
-const nodeId = Buffer.from('03835925714bf59d2fce0a54dccc55c0b2ca5866cc271dee4c4216794e6b56507a', 'hex')
+const nodeId = Buffer.from('02b7ab668e40c75afea494f0c79edb3ae510cbd4445964a6ee6c5fb4db4966b565', 'hex')
 console.log(Buffer.from(curve.publicKeyCreate(initiatorStatic)).toString('hex'))
 const client = new net.Socket()
 const initiator = new noise.Initiator(initiatorStatic, initiatorEphemeral)
@@ -69,7 +69,6 @@ client.on('data', function (data) {
           const channelReq = new message.OpenChannel()
 
           channelReq.decode(received)
-          console.log(channelReq)
           const opts = channelReq
           opts.minimumDepth = 4
           // Object.entries(opts).forEach(function ([key, value]) {
@@ -78,7 +77,6 @@ client.on('data', function (data) {
 
           const acceptOpts = fundingManager.handleChannelOpen(opts)
           const acceptMsg = message.newAcceptChannelMsg(acceptOpts)
-          console.log(acceptMsg, 'accept')
           client.write(initiator.send(acceptMsg.encode()))
           break
           // const messageType = received.readUInt16BE()
@@ -101,6 +99,7 @@ client.on('data', function (data) {
           const fundingCreated = new message.FundingCreated()
 
           fundingCreated.decode(received)
+          console.log('there')
           const fundingSigned = fundingManager.handleFundingCreated(fundingCreated)
           console.log(fundingSigned)
           // const fundingLocked = funding

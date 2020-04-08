@@ -72,7 +72,7 @@ OpenChannel.prototype.encode = function (buf, offset) {
 
   buf.set(this.temporaryChannelId, offset)
   offset += 32
-  
+
   writeUInt64BE(this.fundingSatoshis, buf, offset)
   offset += 8
 
@@ -100,22 +100,22 @@ OpenChannel.prototype.encode = function (buf, offset) {
   buf.writeUInt16BE(this.maxAcceptedHtlcs, offset)
   offset += 2
 
-  buf.set(this.fundingPubkey.serializeCompressed(), offset)
+  buf.set(this.fundingPubkey.compress(), offset)
   offset += 33
 
-  buf.set(this.revocationBasepoint.serializeCompressed(), offset)
+  buf.set(this.revocationBasepoint.compress(), offset)
   offset += 33
 
-  buf.set(this.paymentBasepoint.serializeCompressed(), offset)
+  buf.set(this.paymentBasepoint.compress(), offset)
   offset += 33
 
-  buf.set(this.delayedPaymentBasepoint.serializeCompressed(), offset)
+  buf.set(this.delayedPaymentBasepoint.compress(), offset)
   offset += 33
 
-  buf.set(this.htlcBasepoint.serializeCompressed(), offset)
+  buf.set(this.htlcBasepoint.compress(), offset)
   offset += 33
 
-  buf.set(this.firstPerCommitmentPoint.serializeCompressed(), offset)
+  buf.set(this.firstPerCommitmentPoint.compress(), offset)
   offset += 33
 
   buf.set(this.channelFlags, offset)
@@ -295,22 +295,22 @@ AcceptChannel.prototype.encode = function (buf, offset) {
   buf.writeUInt16BE(this.maxAcceptedHtlcs, offset)
   offset += 2
 
-  buf.set(this.fundingPubkey.serializeCompressed(), offset)
+  buf.set(this.fundingPubkey.compress(), offset)
   offset += 33
 
-  buf.set(this.revocationBasepoint.serializeCompressed(), offset)
+  buf.set(this.revocationBasepoint.compress(), offset)
   offset += 33
 
-  buf.set(this.paymentBasepoint.serializeCompressed(), offset)
+  buf.set(this.paymentBasepoint.compress(), offset)
   offset += 33
 
-  buf.set(this.delayedPaymentBasepoint.serializeCompressed(), offset)
+  buf.set(this.delayedPaymentBasepoint.compress(), offset)
   offset += 33
 
-  buf.set(this.htlcBasepoint.serializeCompressed(), offset)
+  buf.set(this.htlcBasepoint.compress(), offset)
   offset += 33
 
-  buf.set(this.firstPerCommitmentPoint.serializeCompressed(), offset)
+  buf.set(this.firstPerCommitmentPoint.compress(), offset)
   offset += 33
 
   // optionals
@@ -462,7 +462,7 @@ function readPubKey (buf, offset) {
   const publicKey = buf.slice(offset, offset + 33)
   const pub = curve.publicKeyConvert(publicKey, false)
 
-  pub.serializeCompressed = function () {
+  pub.compress = function () {
     return Buffer.from(curve.publicKeyConvert(this))
   }
 

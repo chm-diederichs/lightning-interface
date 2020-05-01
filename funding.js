@@ -72,7 +72,12 @@ ChannelRequest.prototype.handleFundingCreated = function (msg) {
 
   this.fundingCreated = fundingCreated(msg)
   this.keychain.generateObscuringFactor()
-  this.funding = msg.funding
+  this.funding = {
+    txid: Buffer.from(msg.fundingTxid, 'hex'),
+    vout: msg.fundingOutputIndex
+  }
+
+  console.log(this.funding, msg)
 
   const obscure = this.keychain.obscuringFactor
 
@@ -84,9 +89,8 @@ ChannelRequest.prototype.handleFundingCreated = function (msg) {
   assert(this.openChannel.pushMsat < Number.MAX_SAFE_INTEGER, `pushMsat should be < ${Number.MAX_SAFE_INTEGER}`)
   const pushMsatInt = Number(this.openChannel.pushMsat)
 
-  console.log(this.openChannel.feeratePerKw, 'feerate')
   const fee = Math.floor(724 * this.openChannel.feeratePerKw / 1000)
-  console.log(fee)
+
   const pushSat = pushMsatInt / 1000
 
   const value = {
@@ -105,23 +109,21 @@ ChannelRequest.prototype.handleFundingCreated = function (msg) {
 
   // create the first commitment transactions to be signed / verified
   const commitmentTxns = script.createCommitmentTxns(obscure, fundingTx, keysForScript, delay, value, 0, fee)
-  console.log(commitmentTxns.toVerify, '____________')
 
   const fundingScript = script.genFundingPkScript(this.keychain.funding.local.pub.compress(), this.keychain.funding.remote.compress(), this.openChannel.fundingSatoshis)
-  const encodedCommitmentToVerify = btc.tx.encode(commitmentTxns.toVerify, true)
   const commitmentDigestToVerify = btc.digest(commitmentTxns.toVerify, fundingScript.witnessScript, this.openChannel.fundingSatoshis, 0, 0x01)
-  console.log(commitmentDigestToVerify.toString('hex'))
-  console.log(fundingScript.witnessScript.toString('hex'))
+  const commitmentDigestToSign = btc.digest(commitmentTxns.toSign, fundingScript.witnessScript, this.openChannel.fundingSatoshis, 0, 0x01)
 
   assert(this.keychain.verifyCommitmentSig(msg.signature, commitmentDigestToVerify), 'signature could not be verified.')
 
   // TODO: proper storage for signatures
   const theirSignature = msg.signature
-  const ourSignature = this.keychain.signCommitment(encodedCommitmentToSign)
+  const ourSignature = this.keychain.signCommitment(commitmentDigestToSign)
 
   // channelId - funding.txid ^ funding.vout
   const obscureId = this.funding.txid.readUInt16BE(30) ^ this.funding.vout
-  this.channelId = Buffer.concat([this.funding.txid.slice(0, 30), obscureId])
+  this.channelId = Buffer.alloc(32, this.funding.txid)
+  this.channelId.writeUInt16BE(obscureId, 30)
 
   this.fundingSigned = {
     channelId: this.channelId,
@@ -146,7 +148,6 @@ ChannelRequest.prototype.lockFunding = function () {
 ChannelRequest.prototype.finalise = function () {
   // move channel from pending to open
 }
-// 001f682e61aefe04b4d33bd908013841058282ea04413610144a0e13cefa6efa8800
 
 function openChannelRequest (msg) {
   const info = {}

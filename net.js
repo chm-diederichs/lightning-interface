@@ -5,9 +5,9 @@ const curve = require('secp256k1')
 const message = require('./messages')
 const funding = require('./funding')
 
-const initiatorStatic = Buffer.from('1111111111111111111111111111111111111111111111112111111111111111', 'hex')
-const initiatorEphemeral = Buffer.from('1212121212121212121212121212121212121212121212121212121212121212', 'hex')
-const nodeId = Buffer.from('02b7ab668e40c75afea494f0c79edb3ae510cbd4445964a6ee6c5fb4db4966b565', 'hex')
+const initiatorStatic = Buffer.from('1111111111111111111001111111111111111111111111112111111111111111', 'hex')
+const initiatorEphemeral = Buffer.from('1212121212121212001212121212121212121212121212121212121212121212', 'hex')
+const nodeId = Buffer.from(process.argv[2], 'hex')
 console.log(Buffer.from(curve.publicKeyCreate(initiatorStatic)).toString('hex'))
 const client = new net.Socket()
 const initiator = new noise.Initiator(initiatorStatic, initiatorEphemeral)
@@ -57,7 +57,8 @@ client.on('data', function (data) {
     const received = initiator.receive(data)
   } else {
     const received = initiator.receive(data)
-    console.log(received.readUInt16BE())
+    console.log(received)
+    console.log('type:', received.readUInt16BE())
     console.log(received.slice(68).toString('hex'), 'received')
 
     if (received.toString('hex') === '001200100000') {
@@ -99,10 +100,24 @@ client.on('data', function (data) {
           const fundingCreated = new message.FundingCreated()
 
           fundingCreated.decode(received)
-          console.log('there')
-          const fundingSigned = fundingManager.handleFundingCreated(fundingCreated)
-          console.log(fundingSigned)
+
+          const channelSig = fundingManager.handleFundingCreated(fundingCreated)
+          console.log(channelSig)
+          const fundingSigned = message.newFundingSigned(channelSig)
+          console.log(fundingSigned.encode())
+          client.write(initiator.send(fundingSigned.encode()))
           // const fundingLocked = funding
+          break
+
+        case 36:
+          const theirLock = new message.FundingLocked
+          theirLock.decode(received)
+
+          console.log(theirLock)
+          const lockedFunding = fundingManager.lockFunding()
+          const ourLock = message.newFundingLocked(lockedFunding)
+          client.write(initiator.send(ourLock.encode()))
+          break
       }
     }
   }

@@ -25,21 +25,26 @@ module.exports = Keychain = function () {
   this._perCommitment.local = new PerCommitment()
 }
 
-Keychain.prototype.signCommitment = function (digest) {
-  const sigHash = dSha(data)
-  const ecdsaSig = curve.ecdsaSign(sigHash, this.funding.local.priv)
-  return curve.signatureExport(ecdsaSig)
+Keychain.prototype.signCommitment = function (digest, privKey) {
+  if (!privKey) privKey = this.funding.local.priv
+  const sigHash = dSha(digest)
+  const ecdsaSig = curve.ecdsaSign(sigHash, privKey)
+  return ecdsaSig.signature
+  return curve.signatureExport(ecdsaSig.signature)
 }
 
 Keychain.prototype.verifyCommitmentSig = function (signature, digest) {
   console.log(signature.toString('hex'), '\n')
   // const ecdsaSig = curve.signatureImport(signature)
   const sigHash = dSha(digest)
+  console.log('where')
+  console.log(Buffer.from(this.funding.remote).toString('hex'))
+  console.log(sigHash.toString('hex'), sigHash)
   return curve.ecdsaVerify(signature, sigHash, this.funding.remote.compress())
 }
 
 Keychain.prototype.updateLocal = function () {
-  return this._perCommitment.update()
+  return this._perCommitment.local.update()
 }
 
 Keychain.prototype.addRemoteKeys = function (opts) {

@@ -3,7 +3,9 @@ const assert = require('nanoassert')
 
 module.exports = {
   newOpenChannelMsg,
-  newAcceptChannelMsg
+  newAcceptChannelMsg,
+  newFundingSigned,
+  newFundingLocked
 }
 
 module.exports.OpenChannel = OpenChannel = function (opts) {
@@ -407,7 +409,7 @@ module.exports.FundingCreated = FundingCreated = function () {
 }
 
 
-FundingCreated.prototype.decode = function (buf, offset) {
+FundingCreated.prototype.encode = function (buf, offset) {
   if (!buf) buf = Buffer.alloc(this.numBytes())
   if (!offset) offset = 0
   const startIndex = offset
@@ -470,15 +472,95 @@ function readPubKey (buf, offset) {
 }
 
 // TODO: funding created
-
-var FundingSigned = function () {
+module.exports.FundingSigned = FundingSigned = function () {
   this.type = 35
   this.channelId
   this.signature
 }
 
-function newFundingSigned () {
+function newFundingSigned (opts) {
+  const msg = new FundingSigned()
 
+  msg.channelId = opts.channelId
+  msg.signature = opts.signature
+
+  return msg
+}
+
+FundingSigned.prototype.encode  = function (buf, offset) {
+  if (!buf) buf = Buffer.alloc(this.numBytes())
+  if (!offset) offset = 0
+  const startIndex = offset
+
+  buf.writeUInt16BE(this.type, offset)
+  offset += 2
+
+  buf.set(this.channelId, offset)
+  offset += 32
+
+  buf.set(this.signature, offset)
+  offset += 64
+
+  this.encode.bytes = offset - startIndex
+  return buf
+}
+
+FundingSigned.prototype.numBytes = function () {
+  return 98
+}
+
+module.exports.FundingLocked = FundingLocked = function () {
+  this.type = 36
+  this.channelId
+  this.nextCommitmentPoint
+}
+
+function newFundingLocked (opts) {
+  const msg = new FundingLocked()
+
+  msg.channelId = opts.channelId
+  msg.nextCommitmentPoint = opts.nextCommitmentPoint
+
+  return msg
+}
+
+FundingLocked.prototype.encode  = function (buf, offset) {
+  if (!buf) buf = Buffer.alloc(this.numBytes())
+  if (!offset) offset = 0
+  const startIndex = offset
+
+  buf.writeUInt16BE(this.type, offset)
+  offset += 2
+
+  buf.set(this.channelId, offset)
+  offset += 32
+
+  buf.set(this.nextCommitmentPoint, offset)
+  offset += 33
+
+  this.encode.bytes = offset - startIndex
+  return buf
+}
+
+FundingLocked.prototype.decode  = function (buf, offset) {
+  if (!offset) offset = 0
+  const startIndex = offset
+
+  this.type = buf.readUInt16BE(offset)
+  offset += 2
+
+  this.channelId = buf.slice(offset, offset + 32)
+  offset += 32
+
+  this.nextCommitmentPoint = buf.slice(offset, offset + 33)
+  offset += 33
+
+  this.encode.bytes = offset - startIndex
+  return buf
+}
+
+FundingLocked.prototype.numBytes = function () {
+  return 67
 }
 
 function writeUInt64BE (value, buf, offset) {

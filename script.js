@@ -106,11 +106,10 @@ function createCommitmentTxns (obscure, funding, keys, delay, value, commitmentN
   // we sign and send sig to remote
   const ourValue = value
   const ourScripts = {}
-  console.log(keys.local.payment.compress().toString('hex'), 'compress')
-  console.log(keys.local.payment.decompress().toString('hex'), 'decompress')
+
   ourScripts.local = localScript(keys.local.revocation.compress(), keys.local.delayedPayment.compress(), delay.local)
   ourScripts.remote = remoteScript(keys.remote.payment.compress())
-  console.log('-------------------------', ourScripts.remote)
+
   // we verify remote sig against this
   const theirValue = { local: value.remote, remote: value.local }
   const theirScripts = {}
